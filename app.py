@@ -3,10 +3,11 @@ import os
 import shutil
 import pdfplumber
 import docx
+import pandas as pd
 import matplotlib.pyplot as plt
+import plotly.express as px
+import altair as alt
 from sentence_transformers import SentenceTransformer, util
-
-# === Original Code Logic Starts ===
 
 def read_txt(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -32,28 +33,23 @@ def load_resume(file_path):
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# === Streamlit UI Starts ===
+st.set_page_config(layout="wide", page_title="AI Resume Screening Dashboard")
+st.title("🧠 AI-Powered Resume Screening Dashboard")
+st.markdown("Upload a job description and batch of resumes to see advanced insights and rankings.")
 
-st.set_page_config(layout="wide", page_title="AI Resume Screening System")
-st.title("📄 AI Resume Screening and Ranking System")
-st.markdown("Upload a job description and a batch of resumes to get ranked matches based on relevance.")
-
-# File uploads
-job_desc_file = st.file_uploader("Upload Job Description (.txt)", type="txt")
-resume_files = st.file_uploader("Upload Resumes (.pdf, .docx, .txt)", type=["pdf", "docx", "txt"], accept_multiple_files=True)
+# Uploads
+job_desc_file = st.file_uploader("📄 Upload Job Description (.txt)", type="txt")
+resume_files = st.file_uploader("📑 Upload Resumes (.pdf, .docx, .txt)", type=["pdf", "docx", "txt"], accept_multiple_files=True)
 
 if job_desc_file and resume_files:
-    with st.spinner("🔍 Processing..."):
-        # Temp directory
+    with st.spinner("Processing resumes..."):
         temp_dir = "temp_resumes"
         os.makedirs(temp_dir, exist_ok=True)
 
-        # Save job description
         jd_path = os.path.join(temp_dir, "job_description.txt")
         with open(jd_path, "wb") as f:
             f.write(job_desc_file.read())
 
-        # Save resumes
         resume_paths = []
         for uploaded_file in resume_files:
             fpath = os.path.join(temp_dir, uploaded_file.name)
@@ -61,10 +57,8 @@ if job_desc_file and resume_files:
                 f.write(uploaded_file.read())
             resume_paths.append(fpath)
 
-        # === Execute Your Code Without Changes ===
         job_description = read_txt(jd_path)
-        resume_texts = []
-        resume_names = []
+        resume_texts, resume_names = [], []
 
         for fpath in resume_paths:
             try:
@@ -80,37 +74,42 @@ if job_desc_file and resume_files:
         cos_scores = util.cos_sim(jd_embedding, resume_embeddings)[0]
         ranked_results = sorted(zip(resume_names, cos_scores), key=lambda x: x[1], reverse=True)
 
-        # === Dashboard ===
-        st.success("✅ Ranking complete!")
-        st.subheader("📌 Ranked Resumes by Relevance")
-
-        # Table
-        for rank, (filename, score) in enumerate(ranked_results, 1):
-            st.write(f"**{rank}. {filename}** — Similarity Score: `{score:.4f}`")
-
-        # Bar Chart
-        st.subheader("📊 Score Distribution")
-        top_k = min(20, len(ranked_results))
-        top_files = [f for f, _ in ranked_results[:top_k]]
-        top_scores = [float(s) for _, s in ranked_results[:top_k]]
-
-        fig, ax = plt.subplots()
-        ax.barh(top_files[::-1], top_scores[::-1], color='skyblue')
-        ax.set_xlabel("Similarity Score")
-        ax.set_title("Top Resume Matches")
-        st.pyplot(fig)
-
-        # Download option
-        st.subheader("⬇️ Download Ranked Results")
-        import pandas as pd
         df = pd.DataFrame([(rank+1, fname, float(score)) for rank, (fname, score) in enumerate(ranked_results)],
                           columns=["Rank", "Filename", "Score"])
-        st.dataframe(df)
+
+        st.success("✅ Screening Complete")
+        st.subheader("📌 Resume Rankings")
+        st.dataframe(df, use_container_width=True)
+
+        # Dashboard with Charts
+        st.subheader("📊 Dashboard Insights")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            fig1 = px.bar(df.head(20), x="Score", y="Filename", orientation="h", color="Score",
+                          title="Top 20 Resume Matches", color_continuous_scale="Blues")
+            fig1.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig1, use_container_width=True)
+
+        with col2:
+            fig2 = px.histogram(df, x="Score", nbins=10, title="Score Distribution", color_discrete_sequence=["indigo"])
+            st.plotly_chart(fig2, use_container_width=True)
+
+        st.subheader("📈 Interactive Score Explorer")
+        chart = alt.Chart(df).mark_circle(size=100).encode(
+            x='Rank',
+            y='Score',
+            tooltip=['Rank', 'Filename', 'Score'],
+            color=alt.Color('Score', scale=alt.Scale(scheme='blues'))
+        ).interactive()
+
+        st.altair_chart(chart, use_container_width=True)
+
+        st.subheader("⬇️ Download Results")
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("Download CSV", data=csv, file_name="ranked_resumes.csv", mime='text/csv')
+        st.download_button("Download Ranked CSV", data=csv, file_name="ranked_resumes.csv", mime='text/csv')
 
-    # Cleanup
-    shutil.rmtree(temp_dir)
-
+        shutil.rmtree(temp_dir)
 else:
-    st.info("Please upload both a job description and at least one resume to proceed.")
+    st.info("Please upload both a job description and resume files.")
