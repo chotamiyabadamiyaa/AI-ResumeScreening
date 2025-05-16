@@ -34,7 +34,7 @@ def load_resume(file_path):
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 st.set_page_config(page_title="Resume Screening Dashboard", layout="wide")
-st.title("📊 AI-Powered Resume Screening Dashboard")
+st.title("📊 AI-Powered Resume Screening")
 st.markdown("Upload a job description and batch of resumes to explore detailed analytics and rankings.")
 
 # Upload files
